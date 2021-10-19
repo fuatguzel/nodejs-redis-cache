@@ -1,50 +1,76 @@
 const express = require('express')
 const axios = require('axios')
 const redis = require('redis')
+const responseTime = require('response-time')
+const {
+  promisify
+} = require('util')
 
 const PORT = process.env.PORT || 5000
+const REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1'
 const REDIS_PORT = process.env.REDIS_PORT || 6379
 
-const client = redis.createClient(REDIS_PORT)
-
 const app = express()
+app.use(responseTime())
 
-const setResponse = (username, followers) => {
-  return `<h2>${username} has ${followers} followers.</h2>`
-}
+const client = redis.createClient({
+  host: REDIS_HOST,
+  port: REDIS_PORT
+})
 
-const getUserInfo = async (req, res, next) => {
+const GET_ASYNC = promisify(client.get).bind(client)
+const SET_ASYNC = promisify(client.set).bind(client)
+
+const getUserRepos = async (req, res, next) => {
   try {
-    const {username} = req.params
-    const response = await axios(`https://api.github.com/users/${username}`)
+    const {
+      username
+    } = req.params
 
-    const followers = response.data.followers
+    const reply = await GET_ASYNC(`repos-${username}`)
+    if (reply) {
+      console.log("using cache for all repo infos");
+      res.send(JSON.parse(reply))
+      return
+    }
 
-    // Set data to Redis
-    client.setex(username, 60, followers)
+    const response = await axios(`https://api.github.com/users/${username}/repos`)
 
-    res.send(setResponse(username, followers))
+    const saveResponse = await SET_ASYNC(`repos-${username}`, JSON.stringify(response.data), 'EX', 10)
+    console.log("new all repo infos add to cache");
   } catch (error) {
     console.error(error)
     res.status(500)
   }
 }
 
-// Cache middleware
-function cache(req, res, next) {
-  const {username} = req.params
+const getSingleRepoOfUser = async (req, res, next) => {
+  try {
+    const {
+      username,
+      name
+    } = req.params
 
-  client.get(username, (err, data) => {
-    if(err) throw err
+    const reply = await GET_ASYNC(`${username}-${name}`)
+    if (reply) {
+      console.log("using cache for single repo infos");
+      res.send(JSON.parse(reply))
+      return
+    }
 
-    if(data !== null) res.send(setResponse(username, data))
-    else next()
-  })
+    const response = await axios(`https://api.github.com/repos/${username}/${name}`)
+
+    const saveResponse = await SET_ASYNC(`${username}-${name}`, JSON.stringify(response.data), 'EX', 10)
+    console.log("new single repo infos add to cache");
+  } catch (error) {
+    console.error(error)
+    res.status(500)
+  }
 }
 
-
 // Routes
-app.get('/infos/:username', cache, getUserInfo)
+app.get('/repos/:username', getUserRepos)
+app.get('/repos/:username/:name', getSingleRepoOfUser)
 
 app.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
