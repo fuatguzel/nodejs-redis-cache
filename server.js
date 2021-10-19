@@ -48,19 +48,19 @@ const getSingleRepoOfUser = async (req, res, next) => {
   try {
     const {
       username,
-      name
+      repositoryname
     } = req.params
 
-    const reply = await GET_ASYNC(`${username}-${name}`)
+    const reply = await GET_ASYNC(`${username}-${repositoryname}`)
     if (reply) {
       console.log("using cache for single repo infos");
       res.send(JSON.parse(reply))
       return
     }
 
-    const response = await axios(`https://api.github.com/repos/${username}/${name}`)
+    const response = await axios(`https://api.github.com/repos/${username}/${repositoryname}`)
 
-    const saveResponse = await SET_ASYNC(`${username}-${name}`, JSON.stringify(response.data), 'EX', 10)
+    const saveResponse = await SET_ASYNC(`${username}-${repositoryname}`, JSON.stringify(response.data), 'EX', 10)
     console.log("new single repo infos add to cache");
   } catch (error) {
     console.error(error)
@@ -70,7 +70,7 @@ const getSingleRepoOfUser = async (req, res, next) => {
 
 // Routes
 app.get('/repos/:username', getUserRepos)
-app.get('/repos/:username/:name', getSingleRepoOfUser)
+app.get('/repos/:username/:repositoryname', getSingleRepoOfUser)
 
 app.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
