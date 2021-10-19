@@ -1,0 +1,6 @@
+### Get all repos
+GET http://localhost:5000/repos/fuatguzel
+
+
+### Get  single repository of user
+GET http://localhost:5000/repos/fuatguzel/react-basics
